@@ -164,6 +164,109 @@ tr:last-child td{
   animation:blink 1.2s infinite;
 }
 </style>
+
+<style>
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  /* Top Banner */
+  .top-banner {
+    padding: 80px 10px 10px;
+  }
+  .arabic-main {
+    font-size: 28px;
+  }
+  .english-main {
+    font-size: 24px;
+  }
+  .english-sub {
+    font-size: 14px;
+  }
+  .developer-line {
+    font-size: 12px;
+  }
+
+  /* Moon */
+  .moon-right {
+    width: 80px;
+    height: 80px;
+    top: 40px;
+    right: 20px;
+  }
+
+  /* Container */
+  .container {
+    margin: 5px;
+    padding: 15px;
+    border-radius: 10px;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button, input, select {
+    padding: 8px 12px;
+    margin: 4px;
+    font-size: 14px;
+  }
+  input {
+    width: 100%;
+    max-width: 200px;
+  }
+
+  /* Table */
+  table {
+    font-size: 14px;
+  }
+  th, td {
+    padding: 6px;
+  }
+  .hijri-date {
+    font-size: 11px;
+  }
+
+  /* Next Prayer Timer */
+  #nextPrayerTimer {
+    padding: 10px;
+    font-size: 14px;
+  }
+  .next-prayer-name {
+    font-size: 1.1em;
+  }
+
+  /* Today's Prayers */
+  #todayPrayers p {
+    font-size: 14px;
+    margin: 5px 0;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+  .arabic-main {
+    font-size: 24px;
+  }
+  .english-main {
+    font-size: 20px;
+  }
+  .controls {
+    flex-direction: column;
+    align-items: center;
+  }
+  button, input, select {
+    width: 90%;
+    max-width: none;
+  }
+  table {
+    overflow-x: auto;
+    display: block;
+    white-space: nowrap;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -195,6 +298,7 @@ tr:last-child td{
     <button onclick="getLocation()">&#128205; Auto Detect</button>
     <input type="text" id="city" placeholder="Enter City">
     <button onclick="manualSearch()">Search</button>
+    <button onclick="requestNotificationPermission()" id="notifyBtn">&#128276; Allow Notifications</button>
     <button onclick="displayView('week')">Week</button>
     <button onclick="displayView('month')">Month</button>
     <button onclick="toggleAdhaan()" id="adhaanBtn">&#128266; Auto Adhaan ON</button>
@@ -251,18 +355,45 @@ function convertToAMPM(time){
 let prayerTimesToday=null;
 let adhaanEnabled=true;
 let lastAdhaanMinute=null;
+let prayerSystemInterval=null;
+let timerInterval=null;
+let notificationPermission = window.Notification ? Notification.permission : "default";
 
 function toggleAdhaan(){
   adhaanEnabled=!adhaanEnabled;
   document.getElementById("adhaanBtn").innerText=
     adhaanEnabled?"&#128266; Auto Adhaan ON":"&#128263; Auto Adhaan OFF";
   if (adhaanEnabled) {
-    document.getElementById("adhaanAudio").play();
-    lastAdhaanMinute = null; // Reset this to allow immediate auto-adhan if conditions met
+    document.getElementById("adhaanAudio").play().catch(()=>{});
+    lastAdhaanMinute = null;
   } else {
     document.getElementById("adhaanAudio").pause();
-    document.getElementById("adhaanAudio").currentTime = 0; // Rewind the audio
+    document.getElementById("adhaanAudio").currentTime = 0;
   }
+}
+
+function requestNotificationPermission(){
+  if (!("Notification" in window)){
+    alert("Browser does not support notifications.");
+    return;
+  }
+  Notification.requestPermission().then(permission=>{
+    notificationPermission=permission;
+    document.getElementById("notifyBtn").innerText =
+      permission==="granted"?"🔔 Notifications ON":"🔕 Notifications OFF";
+    if(permission==="granted"){
+      new Notification("Prayer Alarm Ready", {
+        body:"You will receive prayer notifications when times arrive."
+      });
+    }
+  });
+}
+
+function showPrayerNotification(prayerName){
+  if(notificationPermission !== "granted") return;
+  new Notification("Prayer Time", {
+    body:`It's time for ${translations[currentLanguage][prayerName.toLowerCase()] || prayerName}.`
+  });
 }
 
 function initializePrayerSystem(timings){
@@ -273,7 +404,9 @@ function initializePrayerSystem(timings){
     Maghrib:timings.Maghrib.substring(0,5),
     Isha:timings.Isha.substring(0,5)
   };
-  setInterval(updatePrayerSystem,1000);
+  if(prayerSystemInterval) clearInterval(prayerSystemInterval);
+  updatePrayerSystem();
+  prayerSystemInterval = setInterval(updatePrayerSystem,1000);
 }
 
 function updatePrayerSystem(){
@@ -303,7 +436,8 @@ function updatePrayerSystem(){
 
   for(let p in prayerTimesToday){
     if(current===prayerTimesToday[p] && lastAdhaanMinute!==current && adhaanEnabled){
-      document.getElementById("adhaanAudio").play();
+      document.getElementById("adhaanAudio").play().catch(()=>{});
+      showPrayerNotification(p);
       lastAdhaanMinute=current;
     }
   }
@@ -388,8 +522,9 @@ function startNextPrayerTimer(prayerTimes){
     `;
   }
 
+  if (timerInterval) clearInterval(timerInterval);
   updateTimer();
-  setInterval(updateTimer,1000);
+  timerInterval = setInterval(updateTimer,1000);
 }
 
 function renderCalendar(data, viewMode = 'today'){
